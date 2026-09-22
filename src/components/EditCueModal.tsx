@@ -6,8 +6,10 @@ import {
   Play,
   Scissors,
   Check,
+  Tag,
+  Plus,
 } from 'lucide-react';
-import { Cue, HUES, shapeForHue, formatTime, parseTargetTime } from '../types';
+import { Cue, HUES, shapeForHue, formatTime, parseTargetTime, PRESET_TAGS } from '../types';
 
 interface EditCueModalProps {
   cue: Cue | null;
@@ -32,8 +34,30 @@ export const EditCueModal: React.FC<EditCueModalProps> = ({
   const [hue, setHue] = useState(cue.hue);
   const [targetStr, setTargetStr] = useState(cue.target ? formatTime(cue.target) : '');
   const [script, setScript] = useState(cue.script || '');
+  const [tags, setTags] = useState<string[]>(cue.tags || []);
+  const [customTagInput, setCustomTagInput] = useState('');
   const [trimStart, setTrimStart] = useState(cue.trimStart || 0);
   const [trimEnd, setTrimEnd] = useState(cue.trimEnd || cue.dur);
+
+  const handleToggleTag = (tagToToggle: string) => {
+    const trimmed = tagToToggle.trim();
+    if (!trimmed) return;
+    if (tags.some((t) => t.toLowerCase() === trimmed.toLowerCase())) {
+      setTags(tags.filter((t) => t.toLowerCase() !== trimmed.toLowerCase()));
+    } else {
+      setTags([...tags, trimmed]);
+    }
+  };
+
+  const handleAddCustomTag = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = customTagInput.trim();
+    if (!clean) return;
+    if (!tags.some((t) => t.toLowerCase() === clean.toLowerCase())) {
+      setTags([...tags, clean]);
+    }
+    setCustomTagInput('');
+  };
 
   const handleSave = () => {
     const updated: Cue = {
@@ -42,6 +66,7 @@ export const EditCueModal: React.FC<EditCueModalProps> = ({
       hue,
       target: parseTargetTime(targetStr),
       script: script.trim() || undefined,
+      tags: tags.length > 0 ? tags : undefined,
       trimStart: trimStart > 0 ? trimStart : undefined,
       trimEnd: trimEnd < cue.dur ? trimEnd : undefined,
     };
@@ -136,6 +161,100 @@ export const EditCueModal: React.FC<EditCueModalProps> = ({
           <p className="text-[11px] text-[#8d8478] mt-1 font-mono">
             During Run Deck mode, telemetry displays if your speech is trending ahead or behind this target.
           </p>
+        </div>
+
+        {/* Category & Mood Tags Section */}
+        <div className="p-3 bg-[#141210] border border-[#322d28] space-y-2.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-mono uppercase tracking-wider text-[#c58b4a] font-bold flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5" />
+              <span>Category & Mood Tags</span>
+            </label>
+            <span className="text-[10px] font-mono text-[#8d8478]">
+              {tags.length} tag{tags.length === 1 ? '' : 's'} assigned
+            </span>
+          </div>
+
+          {/* Active Tags Chips */}
+          {tags.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#262220] border border-[#c58b4a]/60 text-xs font-mono text-[#ece6da]"
+                >
+                  <span>#{t}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleTag(t)}
+                    className="text-[#8d8478] hover:text-[#b05a4e] p-0.5"
+                    title={`Remove ${t}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[11px] font-mono text-[#6e655b] italic">
+              No tags attached. Select preset tags below or enter custom tags to categorize.
+            </p>
+          )}
+
+          {/* Quick Preset Tag Buttons */}
+          <div>
+            <span className="block text-[10px] font-mono uppercase tracking-wider text-[#8d8478] mb-1.5">
+              Quick Presets:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {PRESET_TAGS.map((preset) => {
+                const isSelected = tags.some(
+                  (t) => t.toLowerCase() === preset.toLowerCase()
+                );
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => handleToggleTag(preset)}
+                    className={`px-2 py-1 text-[11px] font-mono transition-colors flex items-center gap-1 ${
+                      isSelected
+                        ? 'bg-[#c58b4a] text-[#121110] font-bold border border-[#c58b4a]'
+                        : 'bg-[#1d1a17] text-[#8d8478] border border-[#322d28] hover:border-[#4a4138] hover:text-[#ece6da]'
+                    }`}
+                  >
+                    {isSelected && <Check className="w-2.5 h-2.5" />}
+                    <span>{preset}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Custom Tag Input */}
+          <div className="flex gap-1.5 pt-1">
+            <input
+              type="text"
+              value={customTagInput}
+              onChange={(e) => setCustomTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddCustomTag();
+                }
+              }}
+              placeholder="Type custom tag (e.g. Closing, Counter-argument)..."
+              className="flex-1 bg-[#121110] border border-[#322d28] focus:border-[#c58b4a] px-2.5 py-1 text-xs text-[#ece6da] outline-none font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => handleAddCustomTag()}
+              disabled={!customTagInput.trim()}
+              className="px-3 py-1 bg-[#262220] hover:bg-[#322d28] disabled:opacity-40 border border-[#322d28] text-xs font-mono text-[#ece6da] flex items-center gap-1 transition-colors"
+            >
+              <Plus className="w-3 h-3 text-[#c58b4a]" />
+              <span>Add</span>
+            </button>
+          </div>
         </div>
 
         {/* In/Out Trimming */}

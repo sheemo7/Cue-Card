@@ -145,6 +145,7 @@ export async function exportDeckToFile(name: string, cues: Cue[]): Promise<Blob>
       trimEnd: c.trimEnd,
       target: c.target,
       script: c.script,
+      tags: c.tags,
       type: c.blob.type || 'audio/webm',
       b64,
     });

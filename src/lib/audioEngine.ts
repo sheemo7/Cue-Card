@@ -85,8 +85,11 @@ export class AudioEngine {
     this.currentCue = cue;
     this.isPaused = false;
 
-    if (this.audio.src !== cue.url) {
-      this.audio.src = cue.url;
+    const activeUrl =
+      cue.activeTakeIndex === 1 && cue.altUrl ? cue.altUrl : cue.url;
+
+    if (this.audio.src !== activeUrl) {
+      this.audio.src = activeUrl;
       this.audio.load();
     }
 

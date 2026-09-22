@@ -8,8 +8,11 @@ import {
   ChevronDown,
   Clock,
   FileText,
+  Tag,
+  X,
 } from 'lucide-react';
 import { Cue, shapeForHue, formatTime } from '../types';
+import { getTagStyle } from './TagFilterBar';
 
 interface RundownListProps {
   cues: Cue[];
@@ -19,11 +22,14 @@ interface RundownListProps {
   currentProgress: number;
   currentTime: number;
   isEditing: boolean;
+  activeTag?: string | null;
   onTapPad: (cue: Cue) => void;
   onEditCue: (cue: Cue) => void;
   onDeleteCue: (cue: Cue) => void;
   onMoveCue: (index: number, direction: 'up' | 'down') => void;
   onOpenScriptModal: (cue: Cue) => void;
+  onSelectTag?: (tag: string | null) => void;
+  onToggleTake?: (cueId: string, takeIndex: number) => void;
 }
 
 export const RundownList: React.FC<RundownListProps> = ({
@@ -34,12 +40,48 @@ export const RundownList: React.FC<RundownListProps> = ({
   currentProgress,
   currentTime,
   isEditing,
+  activeTag,
   onTapPad,
   onEditCue,
   onDeleteCue,
   onMoveCue,
   onOpenScriptModal,
+  onSelectTag,
+  onToggleTake,
 }) => {
+  if (cues.length === 0) {
+    if (activeTag) {
+      return (
+        <div className="mt-16 text-center px-6 text-[#8d8478] max-w-md mx-auto">
+          <div className="w-14 h-14 mx-auto mb-4 border border-[#322d28] bg-[#1d1a17] flex items-center justify-center text-[#c58b4a]">
+            <Tag className="w-6 h-6" />
+          </div>
+          <h2 className="text-[#ece6da] text-lg font-bold mb-2">
+            No cues tagged &ldquo;{activeTag}&rdquo;
+          </h2>
+          <p className="text-sm leading-relaxed mb-6 text-[#8d8478]">
+            No cues in your rundown currently match the #{activeTag} tag. Clear the filter to
+            view all rundown cues.
+          </p>
+          <button
+            type="button"
+            onClick={() => onSelectTag?.(null)}
+            className="px-5 py-2.5 bg-[#c58b4a] hover:bg-[#d4a359] text-[#171208] text-xs font-black tracking-wider uppercase inline-flex items-center gap-2 shadow-lg"
+          >
+            <X className="w-4 h-4" />
+            <span>Show All Cues</span>
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="p-8 text-center text-[#8d8478] font-mono text-sm">
+        No cues in this deck. Add or import cues to construct your rundown.
+      </div>
+    );
+  }
+
   return (
     <div className="p-3 pb-32 max-w-4xl mx-auto space-y-2">
       {cues.map((cue, index) => {
@@ -103,12 +145,32 @@ export const RundownList: React.FC<RundownListProps> = ({
               {/* Details & Script Excerpt */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline justify-between gap-2 flex-wrap">
-                  <h3
-                    onClick={() => onTapPad(cue)}
-                    className="text-base font-bold text-[#ece6da] cursor-pointer hover:text-[#c58b4a] transition-colors"
-                  >
-                    {cue.name}
-                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3
+                      onClick={() => onTapPad(cue)}
+                      className="text-base font-bold text-[#ece6da] cursor-pointer hover:text-[#c58b4a] transition-colors"
+                    >
+                      {cue.name}
+                    </h3>
+                    {(cue.isTemplate || cue.tags?.some((t) => t.toLowerCase() === 'philosophy')) && (
+                      <span className="px-1.5 py-0.2 border border-[#d49b55]/60 bg-[#d49b55]/15 text-[#e5b364] text-[9px] font-mono font-bold tracking-wider uppercase">
+                        TEMPLATE
+                      </span>
+                    )}
+                    {(cue.altBlob || cue.altUrl) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleTake?.(cue.id, cue.activeTakeIndex === 1 ? 0 : 1);
+                        }}
+                        className="px-1.5 py-0.2 border border-[#c58b4a] bg-[#c58b4a]/20 text-[#e5b364] text-[9px] font-mono font-bold tracking-wider uppercase hover:bg-[#c58b4a]/35 transition-colors"
+                        title="Toggle between Take 1 and Take 2 (Voice)"
+                      >
+                        {cue.activeTakeIndex === 1 ? 'T2 · VOICE' : 'T1 · TONE'}
+                      </button>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 text-xs font-mono text-[#8d8478]">
                     {cue.target ? (
                       <span className="flex items-center gap-1 text-[11px] text-[#8d8478]">
@@ -125,6 +187,32 @@ export const RundownList: React.FC<RundownListProps> = ({
                     </span>
                   </div>
                 </div>
+
+                {/* Category / Mood Tag Badges */}
+                {cue.tags && cue.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {cue.tags.map((tag) => {
+                      const isCurrentActive = activeTag?.toLowerCase() === tag.toLowerCase();
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectTag?.(isCurrentActive ? null : tag);
+                          }}
+                          className={`px-1.5 py-0.5 text-[10px] font-mono border transition-all ${getTagStyle(
+                            tag,
+                            isCurrentActive
+                          )}`}
+                          title={`Filter by tag #${tag}`}
+                        >
+                          #{tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {cue.script ? (
                   <p

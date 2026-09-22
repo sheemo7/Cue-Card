@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "DeckSession": {
+      "title": "DeckSession",
+      "description": "A saved rehearsal deck session containing cue metadata, tags, and settings.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the session."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The user UID owner."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the deck session."
+        },
+        "date": {
+          "type": "string",
+          "description": "ISO date string of creation or update."
+        },
+        "cueCount": {
+          "type": "number",
+          "description": "Total number of audio cues in this session."
+        },
+        "totalDuration": {
+          "type": "number",
+          "description": "Total audio duration in seconds."
+        },
+        "cues": {
+          "type": "array",
+          "description": "Serialized list of cues in this session."
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last updated timestamp."
+        }
+      },
+      "required": ["id", "userId", "name", "cueCount", "totalDuration", "updatedAt"]
+    },
+    "UserPreferences": {
+      "title": "UserPreferences",
+      "description": "User in-ear preferences such as preferred voice, translation, and audio output.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The user UID owner."
+        },
+        "preferredTranslation": {
+          "type": "string",
+          "description": "Default scripture translation (e.g. KJV)."
+        },
+        "preferredVoice": {
+          "type": "string",
+          "description": "Default Gemini voice for in-ear prompts."
+        },
+        "continuousMode": {
+          "type": "boolean",
+          "description": "Whether the voice assistant listens continuously."
+        },
+        "outputDeviceName": {
+          "type": "string",
+          "description": "Last used audio output device name."
+        }
+      },
+      "required": ["userId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": {
+        "$ref": "#/entities/DeckSession"
+      },
+      "description": "User's saved rehearsal and audio prompter decks synced across devices."
+    },
+    "/users/{userId}/preferences/{prefId}": {
+      "schema": {
+        "$ref": "#/entities/UserPreferences"
+      },
+      "description": "User's personal rehearsal and in-ear audio configuration."
+    }
+  }
+}

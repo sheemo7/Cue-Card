@@ -12,11 +12,13 @@ import {
   FileText,
   Radio,
   Trash2,
+  Tag,
+  Plus,
 } from 'lucide-react';
 import { AudioRecorder, RecordResult } from '../lib/audioRecorder';
 import { generateBeepBlob } from '../lib/sampleDeck';
 import { transcribeAudioWithGemini } from '../lib/geminiService';
-import { HUES, formatTime, shapeForHue } from '../types';
+import { HUES, formatTime, shapeForHue, PRESET_TAGS } from '../types';
 
 interface VoiceRecordModalProps {
   isOpen: boolean;
@@ -27,6 +29,7 @@ interface VoiceRecordModalProps {
     dur: number;
     target?: number;
     script?: string;
+    tags?: string[];
   }) => void;
   onOpenScripturePrompter?: () => void;
 }
@@ -47,6 +50,8 @@ export const VoiceRecordModal: React.FC<VoiceRecordModalProps> = ({
   const [label, setLabel] = useState('');
   const [script, setScript] = useState('');
   const [targetTime, setTargetTime] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [customTagInput, setCustomTagInput] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'mic' | 'tts'>('mic');
   const [ttsText, setTtsText] = useState('');
@@ -343,6 +348,26 @@ export const VoiceRecordModal: React.FC<VoiceRecordModalProps> = ({
     setActiveTab('mic');
   };
 
+  const handleToggleTag = (tagToToggle: string) => {
+    const trimmed = tagToToggle.trim();
+    if (!trimmed) return;
+    if (tags.some((t) => t.toLowerCase() === trimmed.toLowerCase())) {
+      setTags(tags.filter((t) => t.toLowerCase() !== trimmed.toLowerCase()));
+    } else {
+      setTags([...tags, trimmed]);
+    }
+  };
+
+  const handleAddCustomTag = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = customTagInput.trim();
+    if (!clean) return;
+    if (!tags.some((t) => t.toLowerCase() === clean.toLowerCase())) {
+      setTags([...tags, clean]);
+    }
+    setCustomTagInput('');
+  };
+
   const handleSave = () => {
     if (!recordResult) return;
     const cleanLabel = label.trim() || 'Spoken Cue';
@@ -354,6 +379,7 @@ export const VoiceRecordModal: React.FC<VoiceRecordModalProps> = ({
       dur: recordResult.duration,
       target: targetSec,
       script: script.trim() || undefined,
+      tags: tags.length > 0 ? tags : undefined,
     });
     onClose();
   };
@@ -366,8 +392,9 @@ export const VoiceRecordModal: React.FC<VoiceRecordModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#322d28] pb-3">
           <div>
-            <h2 className="text-base font-bold text-[#ece6da] uppercase tracking-wider">
-              Record a Cue
+            <h2 className="text-base font-bold text-[#ece6da] uppercase tracking-wider flex items-center gap-2">
+              <span className="text-[#c4554a]">X VOX</span>
+              <span className="text-xs font-normal text-[#8d8478] lowercase font-mono">· voice cue studio</span>
             </h2>
             <p className="text-xs text-[#8d8478] font-mono">
               Speak once · Hear it in your ear during live delivery
@@ -523,6 +550,89 @@ export const VoiceRecordModal: React.FC<VoiceRecordModalProps> = ({
                   maxLength={70}
                   className="w-full bg-[#121110] border border-[#322d28] focus:border-[#c58b4a] px-3 py-2 text-sm text-[#ece6da] outline-none"
                 />
+              </div>
+
+              {/* Category & Mood Tags */}
+              <div className="p-2.5 bg-[#141210] border border-[#322d28] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono uppercase tracking-wider text-[#c58b4a] font-bold flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5" />
+                    <span>Category & Mood Tags</span>
+                  </span>
+                  {tags.length > 0 && (
+                    <span className="text-[10px] font-mono text-[#8d8478]">
+                      {tags.length} selected
+                    </span>
+                  )}
+                </div>
+
+                {tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {tags.map((t) => (
+                      <span
+                        key={t}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#262220] border border-[#c58b4a]/60 text-xs font-mono text-[#ece6da]"
+                      >
+                        <span>#{t}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleTag(t)}
+                          className="text-[#8d8478] hover:text-[#b05a4e]"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-1">
+                  {PRESET_TAGS.map((preset) => {
+                    const isSelected = tags.some(
+                      (t) => t.toLowerCase() === preset.toLowerCase()
+                    );
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleToggleTag(preset)}
+                        className={`px-2 py-0.5 text-[11px] font-mono transition-colors flex items-center gap-1 ${
+                          isSelected
+                            ? 'bg-[#c58b4a] text-[#121110] font-bold border border-[#c58b4a]'
+                            : 'bg-[#1d1a17] text-[#8d8478] border border-[#322d28] hover:text-[#ece6da]'
+                        }`}
+                      >
+                        {isSelected && <Check className="w-2.5 h-2.5" />}
+                        <span>{preset}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex gap-1.5 pt-0.5">
+                  <input
+                    type="text"
+                    value={customTagInput}
+                    onChange={(e) => setCustomTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCustomTag();
+                      }
+                    }}
+                    placeholder="Custom tag..."
+                    className="flex-1 bg-[#121110] border border-[#322d28] focus:border-[#c58b4a] px-2 py-1 text-xs text-[#ece6da] outline-none font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAddCustomTag()}
+                    disabled={!customTagInput.trim()}
+                    className="px-2.5 py-1 bg-[#262220] hover:bg-[#322d28] disabled:opacity-40 border border-[#322d28] text-xs font-mono text-[#ece6da] flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3 text-[#c58b4a]" />
+                    <span>Add</span>
+                  </button>
+                </div>
               </div>
 
               <div>

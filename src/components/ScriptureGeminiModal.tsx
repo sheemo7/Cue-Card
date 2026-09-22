@@ -47,6 +47,7 @@ interface ScriptureGeminiModalProps {
     target?: number;
     script?: string;
     hue?: string;
+    tags?: string[];
   }) => void;
   onAddMultipleCues?: (
     cues: Array<{
@@ -56,6 +57,7 @@ interface ScriptureGeminiModalProps {
       target?: number;
       script?: string;
       hue?: string;
+      tags?: string[];
     }>
   ) => void;
   onShowToast: (message: string) => void;
@@ -70,7 +72,7 @@ export const ScriptureGeminiModal: React.FC<ScriptureGeminiModalProps> = ({
 }) => {
   const [selectedEmotion, setSelectedEmotion] = useState('Extreme Insecurity');
   const [customEmotionInput, setCustomEmotionInput] = useState('');
-  const [translation, setTranslation] = useState('NIV');
+  const [translation, setTranslation] = useState('KJV');
   const [drillMode, setDrillMode] = useState<'instant_rebuttal' | 'in_ear_prompt'>(
     'instant_rebuttal'
   );
@@ -377,6 +379,12 @@ export const ScriptureGeminiModal: React.FC<ScriptureGeminiModalProps> = ({
 
     const hue = searchResult?.suggestedHue || HUES[index % HUES.length];
 
+    const tags = ['Scripture'];
+    if (searchResult?.emotionOrFeeling) tags.push(searchResult.emotionOrFeeling);
+    else if (selectedEmotion) tags.push(selectedEmotion);
+    else tags.push('Inspirational');
+    if (item.whyItCounters) tags.push('Rebuttal');
+
     onAddCueToDeck({
       name: cueName,
       blob: audioEntry.blob,
@@ -384,6 +392,7 @@ export const ScriptureGeminiModal: React.FC<ScriptureGeminiModalProps> = ({
       target: item.targetPacingSeconds,
       script: formattedScript,
       hue,
+      tags,
     });
 
     onShowToast(`Added in-ear cue pad: ${item.reference} (${modeLabel})`);
@@ -402,6 +411,7 @@ export const ScriptureGeminiModal: React.FC<ScriptureGeminiModalProps> = ({
         target?: number;
         script?: string;
         hue?: string;
+        tags?: string[];
       }> = [];
 
       for (let i = 0; i < searchResult.scriptures.length; i++) {
@@ -438,6 +448,12 @@ export const ScriptureGeminiModal: React.FC<ScriptureGeminiModalProps> = ({
           `Targeting: "${searchResult.emotionOrFeeling || selectedEmotion}"\n` +
           `${item.whyItCounters}`;
 
+        const tags = ['Scripture'];
+        if (searchResult.emotionOrFeeling) tags.push(searchResult.emotionOrFeeling);
+        else if (selectedEmotion) tags.push(selectedEmotion);
+        else tags.push('Inspirational');
+        if (item.whyItCounters) tags.push('Rebuttal');
+
         itemsToAdd.push({
           name: cueName,
           blob: audioEntry.blob,
@@ -445,6 +461,7 @@ export const ScriptureGeminiModal: React.FC<ScriptureGeminiModalProps> = ({
           target: item.targetPacingSeconds,
           script: formattedScript,
           hue: searchResult.suggestedHue || HUES[i % HUES.length],
+          tags,
         });
       }
 
@@ -484,8 +501,9 @@ export const ScriptureGeminiModal: React.FC<ScriptureGeminiModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base font-extrabold text-[#ece6da] uppercase tracking-wider">
-                  Scripture & In-Ear Rebuttal Prompter
+                <h2 className="text-base font-extrabold text-[#ece6da] uppercase tracking-wider flex items-center gap-2">
+                  <span className="text-[#c58b4a]">X REBUT</span>
+                  <span className="text-xs font-normal text-[#8d8478] lowercase font-sans">· scripture & in-ear rebuttal</span>
                 </h2>
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#c58b4a]/20 text-[#c58b4a] border border-[#c58b4a]/30 font-bold uppercase tracking-wider">
                   Gemini AI
@@ -897,6 +915,19 @@ export const ScriptureGeminiModal: React.FC<ScriptureGeminiModalProps> = ({
                       <blockquote className="bg-[#1a1714] border-l-2 border-[#c58b4a] p-3 text-xs sm:text-[13px] text-[#e3ded4] leading-relaxed italic">
                         "{item.verseText}"
                       </blockquote>
+
+                      {/* Authentic Modern Study Breakdown */}
+                      {item.modernBreakdown && (
+                        <div className="bg-[#171513] border border-[#383028] p-3 space-y-1">
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#c58b4a]">
+                            <BookOpen className="w-3.5 h-3.5" />
+                            <span>Easy-to-Understand Modern Study Breakdown</span>
+                          </div>
+                          <p className="text-xs text-[#d1c8bc] leading-relaxed font-sans">
+                            {item.modernBreakdown}
+                          </p>
+                        </div>
+                      )}
 
                       {/* Prompt & Rebuttal In-Ear Breakdown */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">

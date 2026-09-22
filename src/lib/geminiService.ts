@@ -4,6 +4,7 @@ export interface ScriptureItem {
   reference: string;
   verseText: string;
   translation: string;
+  modernBreakdown?: string;
   inEarPromptCue: string;
   reciteResponse: string;
   whyItCounters: string;
@@ -15,6 +16,33 @@ export interface ScriptureSearchResponse {
   summaryTheme: string;
   suggestedHue: string;
   scriptures: ScriptureItem[];
+}
+
+export interface VoiceAssistantRequest {
+  speechInput: string;
+  availableDecks?: string[];
+  currentDeckName?: string;
+  cues?: Array<{ id: string; name: string; tags?: string[] }>;
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; text: string }>;
+  voice?: string;
+  enableSearchGrounding?: boolean;
+}
+
+export interface VoiceAssistantResponse {
+  action: 'switch_deck' | 'control_playback' | 'lookup_scripture' | 'conversation';
+  targetDeck?: string;
+  playbackCommand?: 'play' | 'pause' | 'next' | 'previous' | 'stop';
+  targetCueName?: string;
+  spokenResponse: string;
+  displayResponse: string;
+  detectedTopicOrEmotion?: string;
+  audioBase64?: string;
+  mimeType?: string;
+  grounding?: {
+    isGrounded: boolean;
+    searchQueries: string[];
+    sources: Array<{ title: string; uri: string }>;
+  };
 }
 
 export interface TTSResult {
@@ -76,7 +104,7 @@ export const EMOTION_PRESETS = [
   },
 ];
 
-export const TRANSLATIONS = ['NIV', 'ESV', 'KJV', 'CSB', 'NKJV', 'NLT'];
+export const TRANSLATIONS = ['KJV', 'KJV + Study Breakdown', 'ESV', 'NIV', 'NKJV', 'CSB'];
 
 export const GEMINI_VOICES = [
   { id: 'Kore', label: 'Kore (Calm & Balanced, In-Ear)' },
@@ -217,4 +245,26 @@ export async function transcribeAudioWithGemini(blob: Blob): Promise<string> {
 
   const data = await res.json();
   return data.transcription || '';
+}
+
+/**
+ * Queries the Phone Listening Assistant for voice commands and conversation
+ */
+export async function queryVoiceAssistant(
+  params: VoiceAssistantRequest
+): Promise<VoiceAssistantResponse> {
+  const res = await fetch('/api/gemini/voice-assistant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(
+      errorData.error || 'Failed to process in-ear voice assistant query'
+    );
+  }
+
+  return res.json();
 }

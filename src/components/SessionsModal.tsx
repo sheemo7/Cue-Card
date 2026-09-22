@@ -28,6 +28,7 @@ interface SessionsModalProps {
   onExportDeck: () => void;
   onImportDeckFile: (file: File) => void;
   onLoadSampleDeck: () => void;
+  onLoadPhilosophyDeck?: () => void;
 }
 
 export const SessionsModal: React.FC<SessionsModalProps> = ({
@@ -45,6 +46,7 @@ export const SessionsModal: React.FC<SessionsModalProps> = ({
   onExportDeck,
   onImportDeckFile,
   onLoadSampleDeck,
+  onLoadPhilosophyDeck,
 }) => {
   const [saveName, setSaveName] = useState('');
   const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
@@ -242,10 +244,10 @@ export const SessionsModal: React.FC<SessionsModalProps> = ({
         </div>
 
         {/* Import & Sample Deck Reset Bar */}
-        <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#322d28]">
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#322d28] flex-wrap">
           <label className="cursor-pointer px-3 py-2 border border-[#322d28] hover:bg-[#262220] text-xs font-bold uppercase tracking-wider text-[#ece6da] flex items-center gap-1.5">
             <Upload className="w-3.5 h-3.5 text-[#c58b4a]" />
-            <span>Import .sottocue File</span>
+            <span>Import Deck</span>
             <input
               type="file"
               accept=".json,.sottocue,application/json"
@@ -254,18 +256,35 @@ export const SessionsModal: React.FC<SessionsModalProps> = ({
             />
           </label>
 
-          <button
-            type="button"
-            onClick={() => {
-              onLoadSampleDeck();
-              onClose();
-            }}
-            className="px-3 py-2 border border-[#322d28] hover:border-[#c58b4a] text-xs font-bold uppercase tracking-wider text-[#8d8478] hover:text-[#ece6da] flex items-center gap-1.5"
-            title="Load default Pitch & Keynote prompts"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-[#c58b4a]" />
-            <span>Load Demo Deck</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {onLoadPhilosophyDeck && (
+              <button
+                type="button"
+                onClick={() => {
+                  onLoadPhilosophyDeck();
+                  onClose();
+                }}
+                className="px-3 py-2 border border-[#d49b55]/50 hover:border-[#d49b55] bg-[#d49b55]/10 hover:bg-[#d49b55]/20 text-xs font-bold uppercase tracking-wider text-[#e5b364] flex items-center gap-1.5 transition-colors"
+                title="Load 20 Greatest Quotes & Monologues for in-ear oral recital (< 2 min reads)"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#d49b55]" />
+                <span>Philosophy Deck (20 Cues)</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                onLoadSampleDeck();
+                onClose();
+              }}
+              className="px-3 py-2 border border-[#322d28] hover:border-[#c58b4a] text-xs font-bold uppercase tracking-wider text-[#8d8478] hover:text-[#ece6da] flex items-center gap-1.5"
+              title="Load default Pitch & Keynote prompts"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[#c58b4a]" />
+              <span>Demo Deck</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

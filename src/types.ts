@@ -4,11 +4,19 @@ export interface Cue {
   hue: string;
   blob?: Blob;
   url: string;
-  dur: number;          // full duration in seconds
+  dur: number;          // full duration in seconds of active take
   trimStart?: number;   // optional non-destructive trim start
   trimEnd?: number;     // optional non-destructive trim end
   target?: number;      // target time (seconds)
   script?: string;      // teleprompter text / notes
+  tags?: string[];      // category or mood tags (e.g. Scripture, Rebuttal, Inspirational)
+  isTemplate?: boolean; // indicates this is a template card (e.g. from Philosophy deck)
+  activeTakeIndex?: number; // 0 = Take 1 (Primary), 1 = Take 2 (Alternative) - max 2 takes
+  primaryLabel?: string;// label for Take 1 (e.g. "Template Tone" or "Voice Take 1")
+  altBlob?: Blob;       // Alternative take audio blob (Slot 2)
+  altUrl?: string;      // Alternative take object URL
+  altDur?: number;      // Alternative take duration in seconds
+  altLabel?: string;    // label for Take 2 (e.g. "My Voice Recital")
   created: number;
 }
 
@@ -25,7 +33,14 @@ export interface DeckSession {
     trimEnd?: number;
     target?: number;
     script?: string;
+    tags?: string[];
     blob: Blob;
+    isTemplate?: boolean;
+    activeTakeIndex?: number;
+    primaryLabel?: string;
+    altBlob?: Blob;
+    altDur?: number;
+    altLabel?: string;
   }>;
 }
 
@@ -43,10 +58,25 @@ export interface ExportDeckFile {
     trimEnd?: number;
     target?: number;
     script?: string;
+    tags?: string[];
     type: string;
     b64: string;
   }>;
 }
+
+export const PRESET_TAGS = [
+  'Philosophy',
+  'Scripture',
+  'Rebuttal',
+  'Inspirational',
+  'Anchor',
+  'Confidence',
+  'Calm',
+  'Urgent',
+  'Keynote',
+] as const;
+
+export type PresetTag = typeof PRESET_TAGS[number];
 
 export const HUES = [
   '#c58b4a', // Bronze

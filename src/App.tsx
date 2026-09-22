@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Cue,
   DeckSession,
@@ -15,6 +15,10 @@ import {
   exportDeckToFile,
 } from './lib/storage';
 import { createDefaultSampleDeck } from './lib/sampleDeck';
+import {
+  getPhilosophyDeckSession,
+  createPhilosophyDeckCues,
+} from './lib/philosophyDeck';
 
 import { Header } from './components/Header';
 import { PadGrid } from './components/PadGrid';
@@ -27,9 +31,21 @@ import { SessionsModal } from './components/SessionsModal';
 import { AudioOutputModal } from './components/AudioOutputModal';
 import { ScriptModal } from './components/ScriptModal';
 import { ScriptureGeminiModal } from './components/ScriptureGeminiModal';
+import { VoiceAssistantModal } from './components/VoiceAssistantModal';
 import { ApkModal } from './components/ApkModal';
+import { AuthModal } from './components/AuthModal';
+import { TagFilterBar, SortMode } from './components/TagFilterBar';
 import { Toast, ToastMessage } from './components/Toast';
 import { Search } from 'lucide-react';
+import {
+  auth,
+  onAuthStateChanged,
+  User,
+  testFirestoreConnection,
+  saveSessionToFirestore,
+  loadSessionsFromFirestore,
+  deleteSessionFromFirestore,
+} from './lib/firebase';
 
 export default function App() {
   const [audioEngine] = useState(() => new AudioEngine());
@@ -51,9 +67,15 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isEditing, setIsEditing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>('deck');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Modals state
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [voiceAssistantOpen, setVoiceAssistantOpen] = useState(false);
   const [voiceRecordOpen, setVoiceRecordOpen] = useState(false);
   const [scriptureModalOpen, setScriptureModalOpen] = useState(false);
   const [editingCue, setEditingCue] = useState<Cue | null>(null);
@@ -95,7 +117,20 @@ export default function App() {
   useEffect(() => {
     const init = async () => {
       await initDB();
-      const sessions = await getAllSessions();
+      let sessions = await getAllSessions();
+
+      // Ensure default Philosophy deck (20 Greatest Monologues & Speeches) is present
+      const hasPhil = sessions.some((s) => s.name.toLowerCase().includes('philosophy'));
+      if (!hasPhil) {
+        try {
+          const philSession = await getPhilosophyDeckSession();
+          sessions = [philSession, ...sessions];
+          await saveSessionToDB(philSession);
+        } catch (err) {
+          console.warn('Could not seed philosophy deck session:', err);
+        }
+      }
+
       setSavedSessions(sessions);
 
       // Check if user has active deck saved or create default
@@ -103,6 +138,38 @@ export default function App() {
       setCues(defaultCues);
     };
     init();
+
+    // Verify Firestore database connection on startup
+    testFirestoreConnection();
+
+    // Listen to Firebase Authentication & auto-load cloud sessions
+    const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
+      setCurrentUser(user);
+      if (user) {
+        addToast(`Firebase Cloud Sync connected (${user.displayName || user.email})`);
+        try {
+          setIsSyncing(true);
+          const cloudSessions = await loadSessionsFromFirestore(user.uid);
+          if (cloudSessions.length > 0) {
+            setSavedSessions((prev) => {
+              const combined = [...cloudSessions];
+              prev.forEach((local) => {
+                if (!combined.some((c) => c.name === local.name)) {
+                  combined.push(local);
+                }
+              });
+              return combined;
+            });
+          }
+        } catch (err) {
+          console.warn('Could not auto-load Firestore sessions:', err);
+        } finally {
+          setIsSyncing(false);
+        }
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // Audio Engine event listeners
@@ -251,6 +318,7 @@ export default function App() {
     dur: number;
     target?: number;
     script?: string;
+    tags?: string[];
   }) => {
     const url = URL.createObjectURL(data.blob);
     const hue = HUES[cues.length % HUES.length];
@@ -264,6 +332,7 @@ export default function App() {
       dur: data.dur,
       target: data.target,
       script: data.script,
+      tags: data.tags,
       created: Date.now(),
     };
 
@@ -280,6 +349,7 @@ export default function App() {
     target?: number;
     script?: string;
     hue?: string;
+    tags?: string[];
   }) => {
     const url = URL.createObjectURL(data.blob);
     const cue: Cue = {
@@ -291,6 +361,7 @@ export default function App() {
       dur: data.dur,
       target: data.target,
       script: data.script,
+      tags: data.tags,
       created: Date.now(),
     };
     setCues((prev) => [...prev, cue]);
@@ -307,6 +378,7 @@ export default function App() {
       target?: number;
       script?: string;
       hue?: string;
+      tags?: string[];
     }>
   ) => {
     const newCues: Cue[] = items.map((data, idx) => ({
@@ -318,6 +390,7 @@ export default function App() {
       dur: data.dur,
       target: data.target,
       script: data.script,
+      tags: data.tags,
       created: Date.now() + idx,
     }));
     setCues((prev) => [...prev, ...newCues]);
@@ -353,6 +426,107 @@ export default function App() {
       setEditingCue(updated);
       addToast(`Replaced audio for "${cue.name}"`);
     });
+  };
+
+  const handleToggleCueTake = (cueId: string, takeIndex: number) => {
+    setCues((prev) => {
+      const updated = prev.map((c) => {
+        if (c.id !== cueId) return c;
+        const targetTake = takeIndex === 1 && (c.altUrl || c.altBlob) ? 1 : 0;
+        const activeDur = targetTake === 1 && c.altDur ? c.altDur : c.dur;
+        return {
+          ...c,
+          activeTakeIndex: targetTake,
+          dur: activeDur,
+        };
+      });
+      const current = updated.find((c) => c.id === cueId);
+      if (current && currentCue?.id === cueId) {
+        setCurrentCue(current);
+      }
+      if (inspectScriptCue?.id === cueId && current) {
+        setInspectScriptCue(current);
+      }
+      return updated;
+    });
+    haptic(15);
+  };
+
+  const handleSaveCueAudio = (
+    cueId: string,
+    audioData: {
+      blob: Blob;
+      url: string;
+      dur: number;
+      saveTarget: 'overwrite' | 'take1' | 'take2';
+      activeTakeIndex?: number;
+      primaryLabel?: string;
+      altLabel?: string;
+    }
+  ) => {
+    setCues((prev) => {
+      const updated = prev.map((c) => {
+        if (c.id !== cueId) return c;
+
+        if (audioData.saveTarget === 'take2') {
+          return {
+            ...c,
+            altBlob: audioData.blob,
+            altUrl: audioData.url,
+            altDur: audioData.dur,
+            altLabel: audioData.altLabel || 'My Voice Recital',
+            activeTakeIndex: 1,
+            dur: audioData.dur,
+          };
+        } else if (audioData.saveTarget === 'take1') {
+          return {
+            ...c,
+            blob: audioData.blob,
+            url: audioData.url,
+            dur: audioData.dur,
+            primaryLabel: audioData.primaryLabel || 'My Voice Recital',
+            activeTakeIndex: 0,
+            trimStart: undefined,
+            trimEnd: undefined,
+          };
+        } else {
+          // 'overwrite' - overwrite the active take
+          if (c.activeTakeIndex === 1 && (c.altBlob || c.altUrl)) {
+            return {
+              ...c,
+              altBlob: audioData.blob,
+              altUrl: audioData.url,
+              altDur: audioData.dur,
+              altLabel: audioData.altLabel || 'My Voice Recital',
+              dur: audioData.dur,
+              activeTakeIndex: 1,
+            };
+          } else {
+            return {
+              ...c,
+              blob: audioData.blob,
+              url: audioData.url,
+              dur: audioData.dur,
+              primaryLabel: audioData.primaryLabel || 'My Voice Recital',
+              activeTakeIndex: 0,
+              trimStart: undefined,
+              trimEnd: undefined,
+            };
+          }
+        }
+      });
+
+      const current = updated.find((c) => c.id === cueId);
+      if (current && currentCue?.id === cueId) {
+        setCurrentCue(current);
+      }
+      if (inspectScriptCue?.id === cueId && current) {
+        setInspectScriptCue(current);
+      }
+      return updated;
+    });
+
+    addToast(`Saved voice recital to cue.`);
   };
 
   // Run Deck Rehearsal Mode
@@ -434,7 +608,14 @@ export default function App() {
         trimEnd: c.trimEnd,
         target: c.target,
         script: c.script,
+        tags: c.tags,
         blob: c.blob || new Blob(),
+        isTemplate: c.isTemplate,
+        activeTakeIndex: c.activeTakeIndex,
+        primaryLabel: c.primaryLabel,
+        altBlob: c.altBlob,
+        altDur: c.altDur,
+        altLabel: c.altLabel,
       })),
     };
 
@@ -443,12 +624,54 @@ export default function App() {
     const all = await getAllSessions();
     setSavedSessions(all);
     addToast(`Saved session "${name}" to this device.`);
+
+    // Persist to Firebase Firestore if logged in
+    if (currentUser) {
+      try {
+        await saveSessionToFirestore(currentUser.uid, session);
+        addToast(`Session "${name}" synced to Firebase Cloud.`);
+      } catch (err) {
+        console.warn('Failed to sync session to Firestore:', err);
+      }
+    }
+  };
+
+  const handleCloudSync = async () => {
+    if (!currentUser) {
+      setAuthModalOpen(true);
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      for (const s of savedSessions) {
+        await saveSessionToFirestore(currentUser.uid, s);
+      }
+      const refreshed = await loadSessionsFromFirestore(currentUser.uid);
+      if (refreshed.length > 0) {
+        setSavedSessions((prev) => {
+          const combined = [...refreshed];
+          prev.forEach((local) => {
+            if (!combined.some((c) => c.name === local.name)) {
+              combined.push(local);
+            }
+          });
+          return combined;
+        });
+      }
+      addToast('All deck sessions synced with Firebase Firestore.');
+    } catch (err: any) {
+      console.error('Manual sync failed:', err);
+      addToast('Cloud sync error: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleLoadSession = (session: DeckSession) => {
     audioEngine.stop();
     const restoredCues: Cue[] = session.cues.map((sc) => {
       const url = sc.blob && sc.blob.size > 0 ? URL.createObjectURL(sc.blob) : '';
+      const altUrl = sc.altBlob && sc.altBlob.size > 0 ? URL.createObjectURL(sc.altBlob) : undefined;
       return {
         id: sc.id,
         name: sc.name,
@@ -458,8 +681,16 @@ export default function App() {
         trimEnd: sc.trimEnd,
         target: sc.target,
         script: sc.script,
+        tags: sc.tags,
         blob: sc.blob,
         url,
+        isTemplate: sc.isTemplate,
+        activeTakeIndex: sc.activeTakeIndex ?? 0,
+        primaryLabel: sc.primaryLabel,
+        altBlob: sc.altBlob,
+        altUrl,
+        altDur: sc.altDur,
+        altLabel: sc.altLabel,
         created: Date.now(),
       };
     });
@@ -474,6 +705,14 @@ export default function App() {
     const all = await getAllSessions();
     setSavedSessions(all);
     addToast('Session deleted.');
+
+    if (currentUser) {
+      try {
+        await deleteSessionFromFirestore(currentUser.uid, String(id));
+      } catch (err) {
+        console.warn('Failed to delete from Firestore:', err);
+      }
+    }
   };
 
   const handleDuplicateSession = async (session: DeckSession) => {
@@ -534,6 +773,7 @@ export default function App() {
             trimEnd: sc.trimEnd,
             target: sc.target,
             script: sc.script,
+            tags: Array.isArray(sc.tags) ? sc.tags : undefined,
             blob,
             url,
             created: Date.now(),
@@ -560,6 +800,20 @@ export default function App() {
     addToast('Loaded default Keynote rehearsal deck.');
   };
 
+  const handleLoadPhilosophyDeck = async () => {
+    audioEngine.stop();
+    try {
+      const philCues = await createPhilosophyDeckCues();
+      setCues(philCues);
+      setDeckName('Philosophy: 20 Greatest Speeches & Monologues');
+      setActiveTag(null);
+      addToast('Loaded Philosophy Deck (20 Great Monologues & Speeches for in-ear oral recital)');
+    } catch (err) {
+      console.error('Failed to load philosophy deck:', err);
+      addToast('Failed to load Philosophy deck.');
+    }
+  };
+
   // Drag and drop audio files directly into window
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -572,12 +826,63 @@ export default function App() {
     }
   };
 
-  // Filter cues for search
-  const filteredCues = cues.filter((c) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return c.name.toLowerCase().includes(q) || (c.script && c.script.toLowerCase().includes(q));
-  });
+  // Unique tags across all cues
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    cues.forEach((c) => {
+      c.tags?.forEach((t) => {
+        if (t.trim()) tagSet.add(t.trim());
+      });
+    });
+    return Array.from(tagSet);
+  }, [cues]);
+
+  // Tag frequency counts
+  const tagCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    cues.forEach((c) => {
+      c.tags?.forEach((t) => {
+        counts[t] = (counts[t] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [cues]);
+
+  // Filter & Sort cues for search and tags
+  const filteredCues = useMemo(() => {
+    let result = cues.filter((c) => {
+      if (activeTag) {
+        const matchesTag = c.tags?.some(
+          (t) => t.toLowerCase() === activeTag.toLowerCase()
+        );
+        if (!matchesTag) return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = c.name.toLowerCase().includes(q);
+        const matchScript = c.script && c.script.toLowerCase().includes(q);
+        const matchTag = c.tags?.some((t) => t.toLowerCase().includes(q));
+        if (!matchName && !matchScript && !matchTag) return false;
+      }
+      return true;
+    });
+
+    if (sortMode === 'tag') {
+      result = [...result].sort((a, b) => {
+        const tagA = (a.tags && a.tags[0]) || 'zzz';
+        const tagB = (b.tags && b.tags[0]) || 'zzz';
+        const tagCompare = tagA.localeCompare(tagB);
+        if (tagCompare !== 0) return tagCompare;
+        return a.name.localeCompare(b.name);
+      });
+    } else if (sortMode === 'name') {
+      result = [...result].sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortMode === 'duration') {
+      result = [...result].sort((a, b) => a.dur - b.dur);
+    }
+
+    return result;
+  }, [cues, activeTag, searchQuery, sortMode]);
 
   const totalDuration = cues.reduce((sum, c) => sum + (c.dur || 0), 0);
 
@@ -635,6 +940,7 @@ export default function App() {
         onOpenSessions={() => setSessionsOpen(true)}
         onOpenVoiceRecord={() => setVoiceRecordOpen(true)}
         onOpenScripturePrompter={() => setScriptureModalOpen(true)}
+        onOpenVoiceAssistant={() => setVoiceAssistantOpen(true)}
         onOpenImport={() => fileInputRef.current?.click()}
         onRunDeck={handleStartRunDeck}
         viewMode={viewMode}
@@ -642,6 +948,8 @@ export default function App() {
         outputDeviceName={outputDeviceName}
         onOpenOutputPicker={() => setOutputPickerOpen(true)}
         onOpenApkModal={() => setApkModalOpen(true)}
+        currentUser={currentUser}
+        onOpenAuthModal={() => setAuthModalOpen(true)}
       />
 
       {/* Hidden File Picker */}
@@ -666,10 +974,26 @@ export default function App() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search cue labels or script prompts..."
+              placeholder="Search cue labels, script prompts, or #tags..."
               className="w-full bg-[#1d1a17] border border-[#322d28] focus:border-[#c58b4a] pl-9 pr-3 py-1.5 text-xs text-[#ece6da] outline-none"
             />
           </div>
+        </div>
+      )}
+
+      {/* Category & Mood Tag Filter & Sort Bar */}
+      {cues.length > 0 && (
+        <div className="max-w-6xl mx-auto w-full">
+          <TagFilterBar
+            allTags={allTags}
+            activeTag={activeTag}
+            onSelectTag={setActiveTag}
+            sortMode={sortMode}
+            onChangeSortMode={setSortMode}
+            tagCounts={tagCounts}
+            totalCount={cues.length}
+            filteredCount={filteredCues.length}
+          />
         </div>
       )}
 
@@ -684,11 +1008,15 @@ export default function App() {
             currentProgress={currentProgress}
             currentTime={currentTime}
             isEditing={isEditing}
+            activeTag={activeTag}
             onTapPad={handleTapPad}
             onEditCue={(cue) => setEditingCue(cue)}
             onDeleteCue={handleDeleteCue}
             onMoveCue={handleMoveCue}
             onOpenEmptyImport={() => fileInputRef.current?.click()}
+            onSelectTag={setActiveTag}
+            onOpenScriptModal={(cue) => setInspectScriptCue(cue)}
+            onToggleTake={handleToggleCueTake}
           />
         ) : (
           <RundownList
@@ -699,11 +1027,14 @@ export default function App() {
             currentProgress={currentProgress}
             currentTime={currentTime}
             isEditing={isEditing}
+            activeTag={activeTag}
             onTapPad={handleTapPad}
             onEditCue={(cue) => setEditingCue(cue)}
             onDeleteCue={handleDeleteCue}
             onMoveCue={handleMoveCue}
             onOpenScriptModal={(cue) => setInspectScriptCue(cue)}
+            onSelectTag={setActiveTag}
+            onToggleTake={handleToggleCueTake}
           />
         )}
       </main>
@@ -771,6 +1102,19 @@ export default function App() {
         onShowToast={(msg) => addToast(msg)}
       />
 
+      <VoiceAssistantModal
+        isOpen={voiceAssistantOpen}
+        onClose={() => setVoiceAssistantOpen(false)}
+        currentDeckName={deckName}
+        availableDecks={savedSessions}
+        cues={cues}
+        onSwitchDeck={handleLoadSession}
+        onPlayCue={(cue) => handleTapPad(cue)}
+        onStopPlayback={() => audioEngine.stop()}
+        onAddCueToDeck={handleAddScriptureCue}
+        onShowToast={(msg) => addToast(msg)}
+      />
+
       <EditCueModal
         cue={editingCue}
         isOpen={!!editingCue}
@@ -795,6 +1139,7 @@ export default function App() {
         onExportDeck={handleExportDeck}
         onImportDeckFile={handleImportDeckFile}
         onLoadSampleDeck={handleLoadSampleDeck}
+        onLoadPhilosophyDeck={handleLoadPhilosophyDeck}
       />
 
       <AudioOutputModal
@@ -812,12 +1157,24 @@ export default function App() {
         cue={inspectScriptCue}
         isOpen={!!inspectScriptCue}
         onClose={() => setInspectScriptCue(null)}
+        onLoadPhilosophyDeck={handleLoadPhilosophyDeck}
+        onSaveCueAudio={handleSaveCueAudio}
+        onToggleTake={handleToggleCueTake}
       />
 
       <ApkModal
         isOpen={apkModalOpen}
         onClose={() => setApkModalOpen(false)}
         onTestAudioChime={handleTestAudioChime}
+      />
+
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        currentUser={currentUser}
+        onShowToast={addToast}
+        onSyncNow={handleCloudSync}
+        isSyncing={isSyncing}
       />
 
       {/* Toast notifications */}

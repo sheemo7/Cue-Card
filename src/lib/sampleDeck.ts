@@ -1,4 +1,5 @@
 import { Cue, HUES } from '../types';
+import { createPhilosophyMasterCard } from './philosophyDeck';
 
 // Utility to generate a clean, audible tone audio blob using offline audio context
 export async function generateBeepBlob(
@@ -103,6 +104,7 @@ export async function createDefaultSampleDeck(): Promise<Cue[]> {
       dur: 2.2,
       target: 20,
       freq: 523.25, // C5
+      tags: ['Inspirational', 'Keynote'],
       script:
         'Good evening, distinguished judges and colleagues. Tonight, we are not asking you to imagine a distant future — we are presenting the working reality in your hands.',
     },
@@ -112,6 +114,7 @@ export async function createDefaultSampleDeck(): Promise<Cue[]> {
       dur: 1.8,
       target: 35,
       freq: 587.33, // D5
+      tags: ['Anchor'],
       script:
         'Every day, 72% of mission-critical decisions stall due to fragmented context. We observed teams spending 4 hours a day simply reconstructing previous meeting rationales.',
     },
@@ -121,6 +124,7 @@ export async function createDefaultSampleDeck(): Promise<Cue[]> {
       dur: 2.4,
       target: 45,
       freq: 659.25, // E5
+      tags: ['Confidence', 'Keynote'],
       script:
         'Sotto Cue changes this paradigm. By placing context directly in your ear at key speaking checkpoints, hesitation drops to zero, and message clarity jumps by 40%.',
     },
@@ -130,6 +134,7 @@ export async function createDefaultSampleDeck(): Promise<Cue[]> {
       dur: 2.0,
       target: 25,
       freq: 698.46, // F5
+      tags: ['Rebuttal'],
       script:
         'To the objection regarding cognitive overhead: our cue delivery is sub-audible whisper cadence, timed precisely between your natural breathing pauses.',
     },
@@ -139,6 +144,7 @@ export async function createDefaultSampleDeck(): Promise<Cue[]> {
       dur: 2.5,
       target: 15,
       freq: 783.99, // G5
+      tags: ['Inspirational'],
       script:
         'Join our closed beta today. Test your first keynote, debate, or pitch deck with Sotto Cue in your ear, and speak with unwavering composure.',
     },
@@ -148,6 +154,7 @@ export async function createDefaultSampleDeck(): Promise<Cue[]> {
       dur: 1.5,
       target: 10,
       freq: 880.0, // A5
+      tags: ['Calm'],
       script: 'Thank you for your time. I welcome your questions.',
     },
   ];
@@ -164,11 +171,16 @@ export async function createDefaultSampleDeck(): Promise<Cue[]> {
       dur: item.dur,
       target: item.target,
       script: item.script,
+      tags: item.tags,
       blob,
       url,
       created: Date.now() - (sampleData.length - i) * 60000,
     });
   }
+
+  // Default Card under Philosophy containing 20 of the greatest quotes/monologues
+  const philosophyCard = await createPhilosophyMasterCard();
+  cues.push(philosophyCard);
 
   return cues;
 }
